@@ -3,13 +3,21 @@ import 'package:flutter/material.dart';
 
 import '../main.dart';
 import '../model/pedido.dart';
+import '../controller/avaliacoes_controller.dart';
+import 'nova_avaliacao_view.dart';
 
 class PedidosPage extends StatelessWidget {
+  final void Function(int index) onMarcarEntregue;
   final List<Pedido> pedidos;
+  final AvaliacoesController avaliacoesController;
+  final VoidCallback onAtualizar;
 
   const PedidosPage({
+    required this.onMarcarEntregue,
     super.key,
     required this.pedidos,
+    required this.avaliacoesController,
+    required this.onAtualizar,
   });
 
   @override
@@ -174,6 +182,45 @@ class PedidosPage extends StatelessWidget {
                             ),
                           ],
                         ),
+                        
+                        if (pedido.status != 'Entregue') ...[
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () => onMarcarEntregue(index),
+                              icon: const Icon(Icons.local_shipping_outlined),
+                              label: const Text('Simular entrega'),
+                            ),
+                          ),
+                        ],
+                        
+                        if (pedido.status == 'Entregue') ...[
+                          const SizedBox(height: 8),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () async {
+                                for (final item in pedido.itens) {
+                                  await Navigator.push<void>(
+                                    context,
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => NovaAvaliacaoPage(
+                                        figura: item.figura,
+                                        controller: avaliacoesController,
+                                        onSalvar: onAtualizar,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.star_outline),
+                              label: const Text('Avaliar compra'),
+                            ),
+                          ),
+                        ],
+
+
                       ],
                     ),
                   ),

@@ -5,6 +5,7 @@ import '../main.dart';
 import 'common_widgets.dart';
 import '../controller/enderecos_controller.dart';
 import 'enderecos_view.dart';
+import '../controller/avaliacoes_controller.dart';
 
 class ProfilePage extends StatelessWidget {
   final String username;
@@ -17,6 +18,8 @@ class ProfilePage extends StatelessWidget {
   final VoidCallback onAbout;
   final VoidCallback onOrders;
   final VoidCallback onFavorites;
+  final AvaliacoesController avaliacoesController;
+  final VoidCallback onMyReviews;
   
 
   const ProfilePage({
@@ -31,49 +34,32 @@ class ProfilePage extends StatelessWidget {
     required this.onAbout,
     required this.onOrders,
     required this.onFavorites,
+    required this.avaliacoesController,
+    required this.onMyReviews,
    
   });
 
-  Future<void> _editName(BuildContext context) async {
-    final c = TextEditingController(text: username);
+  
+ 
+  
+Future<void> _editName(BuildContext context) async {
+  final novoNome = await showDialog<String>(
+    context: context,
+    builder: (_) => _EditarNomeDialog(nomeAtual: username),
+  );
 
-    await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: panel,
-        title: const Text('Alterar nome de usuário'),
-        content: TextField(
-          controller: c,
-          decoration: const InputDecoration(
-            hintText: 'Novo nome',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (c.text.trim().isEmpty) return;
+  if (!context.mounted || novoNome == null) return;
 
-              onName(c.text.trim());
-              Navigator.pop(ctx);
+  onName(novoNome);
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Nome atualizado com sucesso!'),
-                ),
-              );
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
-      ),
-    );
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text('Nome atualizado com sucesso!'),
+    ),
+  );
+}
 
-    c.dispose();
-  }
+
 
   Widget _tile(
     BuildContext context,
@@ -153,8 +139,11 @@ class ProfilePage extends StatelessWidget {
                     favorites.toString().padLeft(2, '0'),
                     'Favoritos',
                   ),
-                  _stat('03', 'Avaliações'),
-                ],
+                  _stat(
+                    avaliacoesController.avaliacoes.length.toString(),
+                    'Avaliações',
+                  ),
+                ],  
               ),
             ),
           ),
@@ -165,6 +154,14 @@ class ProfilePage extends StatelessWidget {
             'Meus pedidos',
             onOrders,
           ),
+                    
+          _tile(
+            context,
+            Icons.star_outline,
+            'Minhas avaliações',
+            onMyReviews,
+          ),
+
           _tile(
             context,
             Icons.favorite_border,
@@ -253,4 +250,74 @@ Widget _stat(String n, String label) {
       ),
     ],
   );
+}
+
+
+class _EditarNomeDialog extends StatefulWidget {
+  final String nomeAtual;
+
+  const _EditarNomeDialog({
+    required this.nomeAtual,
+  });
+
+  @override
+  State<_EditarNomeDialog> createState() =>
+      _EditarNomeDialogState();
+}
+
+class _EditarNomeDialogState extends State<_EditarNomeDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.nomeAtual,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: panel,
+      title: const Text('Alterar nome de usuário'),
+      content: TextField(
+        controller: _controller,
+        autofocus: true,
+        decoration: const InputDecoration(
+          labelText: 'Nome de usuário',
+          hintText: 'Digite o novo nome',
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final nome = _controller.text.trim();
+
+            if (nome.isEmpty) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Digite um nome de usuário.'),
+                ),
+              );
+              return;
+            }
+
+            Navigator.of(context).pop(nome);
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
 }

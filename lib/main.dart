@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
 
+import 'controller/avaliacoes_controller.dart';
 import 'controller/carrinho_controller.dart';
 import 'controller/catalogo_controller.dart';
 import 'controller/enderecos_controller.dart';
@@ -23,6 +24,7 @@ import 'view/ofertas_view.dart';
 import 'view/pedidos_view.dart';
 import 'view/perfil_view.dart';
 import 'view/sobre_view.dart';
+import 'view/minhas_avaliacoes_view.dart';
 
 const lime = Color(0xFFB8F35B);
 const bg = Color(0xFF101112);
@@ -193,6 +195,7 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
   final perfil = getIt<PerfilController>();
   final pedidos = PedidosController();
   final enderecos = EnderecosController();
+  final avaliacoes = AvaliacoesController();
 
   int tab = 0;
   bool entrou = false;
@@ -215,7 +218,11 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
           onReviews: () => Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => ReviewsPage(figure: figura),
+              builder: (_) => 
+              ReviewsPage(
+                figure: figura,
+                controller: avaliacoes,
+              ) 
             ),
           ),
         ),
@@ -256,15 +263,27 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
 
 
   
+  
   void abrirPedidos() {
     navigatorKey.currentState?.push<void>(
       MaterialPageRoute<void>(
         builder: (_) => PedidosPage(
           pedidos: pedidos.pedidos,
+          avaliacoesController: avaliacoes,
+          onAtualizar: () {
+            setState(() {});
+          },
+          onMarcarEntregue: (index) {
+            pedidos.marcarComoEntregue(index);
+            navigatorKey.currentState?.pop();
+            abrirPedidos();
+          },
         ),
       ),
     );
   }
+
+
 
 
 
@@ -408,8 +427,20 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
             username: perfil.nomeUsuario,
             email: perfil.email,
             favorites: catalogo.favoritos.length,
-            cartCount: carrinho.quantidadeTotal,
+            cartCount: pedidos.pedidos.length,
             enderecosController: enderecos,
+            avaliacoesController: avaliacoes,
+            onMyReviews: () {
+              debugPrint('Abrindo Minhas avaliações');
+
+              navigatorKey.currentState?.push<void>(
+                MaterialPageRoute<void>(
+                  builder: (_) => MinhasAvaliacoesPage(
+                    controller: avaliacoes,
+                  ),
+                ),
+              );
+            },
             onName: (nome) {
               perfil.atualizarNome(nome);
               setState(() {});

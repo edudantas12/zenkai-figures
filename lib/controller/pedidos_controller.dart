@@ -37,4 +37,17 @@ class PedidosController extends ChangeNotifier {
 
     notifyListeners();
   }
+  
+  void marcarComoEntregue(int index) {
+    if (index < 0 || index >= _pedidos.length) {
+      return;
+    }
+
+    _pedidos[index] = _pedidos[index].copyWith(
+      status: 'Entregue',
+    );
+
+    notifyListeners();
+  }
+
 }
