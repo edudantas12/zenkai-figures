@@ -2,6 +2,15 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:device_preview_plus/device_preview_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+import 'controller/auth_controller.dart';
+import 'controller/usuario_controller.dart';
+import 'core/erro_app.dart';
+import 'firebase_options.dart';
+import 'model/usuario.dart';
+import 'view/informacoes_usuario_view.dart';
 
 import 'controller/avaliacoes_controller.dart';
 import 'controller/carrinho_controller.dart';
@@ -34,7 +43,11 @@ const muted = Color(0xFF9CA3A3);
 final getIt = GetIt.instance;
 
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   configurarDependencias();
 
   runApp(
@@ -196,9 +209,64 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
   final pedidos = PedidosController();
   final enderecos = EnderecosController();
   final avaliacoes = AvaliacoesController();
+  final auth = getIt<AuthController>();
+  final usuarios = getIt<UsuarioController>();
+
+  final GlobalKey<ScaffoldMessengerState> messengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
+  /// Guardado em campo para o StreamBuilder não reiniciar a cada setState.
+  late final Stream<User?> _authStream = auth.mudancasDeAutenticacao;
+  Stream<Usuario?>? _usuarioStream;
+  String? _usuarioStreamUid;
 
   int tab = 0;
-  bool entrou = false;
+
+  /// "Explorar sem conta": navega pelo catálogo sem autenticação.
+  bool visitante = false;
+
+  Stream<Usuario?> _streamDoUsuario(String uid) {
+    if (_usuarioStreamUid != uid) {
+      _usuarioStreamUid = uid;
+      _usuarioStream = usuarios.stream(uid);
+    }
+    return _usuarioStream!;
+  }
+
+  void _mensagem(String texto) {
+    messengerKey.currentState
+      ?..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  Future<void> sair(User? usuario) async {
+    if (usuario == null) {
+      setState(() {
+        visitante = false;
+        tab = 0;
+      });
+      return;
+    }
+    try {
+      await auth.sair();
+      setState(() => tab = 0);
+      _mensagem('Você saiu da sua conta.');
+    } on ErroApp catch (e) {
+      _mensagem(e.mensagem);
+    }
+  }
+
+  void abrirInformacoesUsuario(User? usuario) {
+    if (usuario == null) {
+      _mensagem('Entre com sua conta para ver suas informações.');
+      return;
+    }
+    navigatorKey.currentState?.push<void>(
+      MaterialPageRoute<void>(
+        builder: (_) => const InformacoesUsuarioPage(),
+      ),
+    );
+  }
 
   void abrirDetalhes(Figure figura) {
     Navigator.push(
@@ -353,19 +421,86 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
           ),
         ),
       ),
-      home: entrou
-          ? _shell()
-          : LoginPage(
-              onLogin: (u, e) {
-                perfil.atualizarNome(u);
-                perfil.atualizarEmail(e);
-                setState(() => entrou = true);
-              },
-            ),
+      scaffoldMessengerKey: messengerKey,
+      // A sessão é gerenciada pelo Firebase Authentication: ao entrar,
+      // sair ou recarregar a página, o StreamBuilder decide a tela.
+      home: StreamBuilder<User?>(
+        stream: _authStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator(color: lime)),
+            );
+          }
+          final usuario = snapshot.data;
+          if (usuario != null || visitante) return _shell(usuario);
+          return LoginPage(
+            onExplorar: () {
+              perfil.atualizarNome('Colecionador');
+              setState(() => visitante = true);
+            },
+          );
+        },
+      ),
     );
   }
 
-  Widget _shell() {
+  Widget _perfil(User? usuario) {
+    ProfilePage pagina({required String nome, required String email}) {
+      return ProfilePage(
+        username: nome,
+        email: email,
+        favorites: catalogo.favoritos.length,
+        cartCount: pedidos.pedidos.length,
+        enderecosController: enderecos,
+        avaliacoesController: avaliacoes,
+        onMyReviews: () {
+          debugPrint('Abrindo Minhas avaliações');
+
+          navigatorKey.currentState?.push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => MinhasAvaliacoesPage(
+                controller: avaliacoes,
+              ),
+            ),
+          );
+        },
+        onName: (nome) async {
+          if (usuario != null) {
+            await usuarios.atualizar(usuario.uid, nome: nome.trim());
+          } else {
+            perfil.atualizarNome(nome);
+            setState(() {});
+          }
+        },
+        onUserInfo: () => abrirInformacoesUsuario(usuario),
+        onLogout: () => sair(usuario),
+        onAbout: abrirSobre,
+        onOrders: abrirPedidos,
+        onFavorites: abrirFavoritos,
+      );
+    }
+
+    if (usuario == null) {
+      return pagina(nome: perfil.nomeUsuario, email: '');
+    }
+
+    // Nome e e-mail vêm do documento usuarios/{uid}, em tempo real.
+    return StreamBuilder<Usuario?>(
+      stream: _streamDoUsuario(usuario.uid),
+      builder: (context, snapshot) {
+        final dados = snapshot.data;
+        return pagina(
+          nome: (dados?.nome.isNotEmpty ?? false)
+              ? dados!.nome
+              : 'Colecionador',
+          email: dados?.email ?? usuario.email ?? '',
+        );
+      },
+    );
+  }
+
+  Widget _shell(User? usuario) {
     return Scaffold(
       body: IndexedStack(
         index: tab,
@@ -423,33 +558,7 @@ class _ZenkaiAppState extends State<ZenkaiApp> {
               );
             },
           ),
-          ProfilePage(
-            username: perfil.nomeUsuario,
-            email: perfil.email,
-            favorites: catalogo.favoritos.length,
-            cartCount: pedidos.pedidos.length,
-            enderecosController: enderecos,
-            avaliacoesController: avaliacoes,
-            onMyReviews: () {
-              debugPrint('Abrindo Minhas avaliações');
-
-              navigatorKey.currentState?.push<void>(
-                MaterialPageRoute<void>(
-                  builder: (_) => MinhasAvaliacoesPage(
-                    controller: avaliacoes,
-                  ),
-                ),
-              );
-            },
-            onName: (nome) {
-              perfil.atualizarNome(nome);
-              setState(() {});
-            },
-            onLogout: () => setState(() => entrou = false),
-            onAbout: abrirSobre,
-            onOrders: abrirPedidos,
-            onFavorites: abrirFavoritos,
-          ),
+          _perfil(usuario),
         ],
       ),
       bottomNavigationBar: NavigationBar(

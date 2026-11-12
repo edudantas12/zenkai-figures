@@ -6,6 +6,7 @@ import 'common_widgets.dart';
 import '../controller/enderecos_controller.dart';
 import 'enderecos_view.dart';
 import '../controller/avaliacoes_controller.dart';
+import '../core/erro_app.dart';
 
 class ProfilePage extends StatelessWidget {
   final String username;
@@ -13,7 +14,9 @@ class ProfilePage extends StatelessWidget {
   final int favorites;
   final int cartCount;
   final EnderecosController enderecosController;
-  final ValueChanged<String> onName;
+  /// Salva o novo nome (no Firestore, quando há usuário autenticado).
+  final Future<void> Function(String) onName;
+  final VoidCallback onUserInfo;
   final VoidCallback onLogout;
   final VoidCallback onAbout;
   final VoidCallback onOrders;
@@ -30,6 +33,7 @@ class ProfilePage extends StatelessWidget {
     required this.cartCount,
     required this.enderecosController,
     required this.onName,
+    required this.onUserInfo,
     required this.onLogout,
     required this.onAbout,
     required this.onOrders,
@@ -50,8 +54,18 @@ Future<void> _editName(BuildContext context) async {
 
   if (!context.mounted || novoNome == null) return;
 
-  onName(novoNome);
+  try {
+    await onName(novoNome);
+  } on ErroApp catch (e) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.mensagem)),
+      );
+    }
+    return;
+  }
 
+  if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(
       content: Text('Nome atualizado com sucesso!'),
@@ -172,17 +186,8 @@ Future<void> _editName(BuildContext context) async {
           _tile(
             context,
             Icons.person_outline,
-            'Dados pessoais',
-            () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => InfoPage(
-                  title: 'Dados pessoais',
-                  message:
-                      'Nome de usuário: $username\nE-mail: $email',
-                ),
-              ),
-            ),
+            'Informações do usuário',
+            onUserInfo,
           ),
 
           _tile(

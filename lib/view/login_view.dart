@@ -1,18 +1,21 @@
 
 import 'package:flutter/material.dart';
 
+import '../controller/auth_controller.dart';
 import '../controller/login_controller.dart';
+import '../core/erro_app.dart';
 import '../main.dart';
 import 'cadastrar_usuario_view.dart';
 import 'common_widgets.dart';
 import 'recuperar_senha_view.dart';
 
 class LoginPage extends StatefulWidget {
-  final void Function(String, String) onLogin;
+  /// Chamado ao tocar em "Explorar sem conta" (modo visitante).
+  final VoidCallback onExplorar;
 
   const LoginPage({
     super.key,
-    required this.onLogin,
+    required this.onExplorar,
   });
 
   @override
@@ -23,9 +26,11 @@ class _LoginPageState extends State<LoginPage> {
   final email = TextEditingController();
   final senha = TextEditingController();
   final controller = LoginController();
+  final auth = getIt<AuthController>();
 
   bool mostrar = false;
-  bool lembrar = false;
+  bool lembrar = true;
+  bool carregando = false;
 
   @override
   void dispose() {
@@ -35,20 +40,36 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void entrar() {
-    final erro = controller.validar(email.text, senha.text);
+  void _mensagem(String texto) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
+  }
 
+  Future<void> entrar() async {
+    if (carregando) return;
+
+    final erro = controller.validar(email.text, senha.text);
     if (erro != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(erro)),
-      );
+      _mensagem(erro);
       return;
     }
 
-    widget.onLogin(
-      controller.nomePeloEmail(email.text),
-      email.text.trim(),
-    );
+    setState(() => carregando = true);
+    try {
+      await auth.entrar(
+        email: email.text,
+        senha: senha.text,
+        lembrar: lembrar,
+      );
+      // A navegação para a tela principal acontece no main.dart,
+      // que escuta as mudanças de autenticação do Firebase.
+      if (mounted) _mensagem('Login realizado com sucesso!');
+    } on ErroApp catch (e) {
+      if (mounted) _mensagem(e.mensagem);
+    } finally {
+      if (mounted) setState(() => carregando = false);
+    }
   }
 
   @override
@@ -142,6 +163,7 @@ class _LoginPageState extends State<LoginPage> {
                 TextField(
                   controller: senha,
                   obscureText: !mostrar,
+                  onSubmitted: (_) => entrar(),
                   decoration: InputDecoration(
                     hintText: 'Digite sua senha',
                     prefixIcon: const Icon(Icons.lock_outline),
@@ -178,7 +200,7 @@ class _LoginPageState extends State<LoginPage> {
                       onPressed: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => const RecoverPage(),
+                          builder: (_) => RecoverPage(emailInicial: email.text),
                         ),
                       ),
                       child: const Text(
@@ -191,10 +213,17 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                 ),
-                PrimaryButton(
-                  'Entrar',
-                  onPressed: entrar,
-                ),
+                carregando
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        child: Center(
+                          child: CircularProgressIndicator(color: lime),
+                        ),
+                      )
+                    : PrimaryButton(
+                        'Entrar',
+                        onPressed: entrar,
+                      ),
                 const SizedBox(height: 14),
                 const Center(
                   child: Text(
@@ -204,7 +233,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
-                  onPressed: () => widget.onLogin('Colecionador', ''),
+                  onPressed: widget.onExplorar,
                   icon: const Icon(Icons.explore_outlined),
                   label: const Text('Explorar sem conta'),
                 ),

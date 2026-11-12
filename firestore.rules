@@ -1,0 +1,49 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Dados de cada usuário: usuarios/{uid}, onde {uid} é o UID do
+    // Firebase Authentication. Somente o próprio dono pode ler e alterar.
+    match /usuarios/{uid} {
+
+      function ehDono() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      function camposValidos(dados) {
+        return dados.nome is string
+          && dados.nome.size() >= 2 && dados.nome.size() <= 100
+          && dados.telefone is string && dados.telefone.matches('^[0-9]{10,11}$')
+          && dados.cep is string && dados.cep.matches('^[0-9]{8}$');
+      }
+
+      allow read: if ehDono();
+
+      // Criação: exatamente os campos esperados (nunca senha), UID igual
+      // ao do documento, e-mail igual ao do login e data do servidor.
+      allow create: if ehDono()
+        && request.resource.data.keys().hasOnly(
+             ['uid', 'nome', 'telefone', 'cep', 'email', 'dataCadastro'])
+        && request.resource.data.keys().hasAll(
+             ['uid', 'nome', 'telefone', 'cep', 'email', 'dataCadastro'])
+        && request.resource.data.uid == uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.dataCadastro == request.time
+        && camposValidos(request.resource.data);
+
+      // Atualização: só nome, telefone e CEP podem mudar.
+      allow update: if ehDono()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['nome', 'telefone', 'cep'])
+        && camposValidos(request.resource.data);
+
+      allow delete: if false;
+    }
+
+    // Qualquer outro caminho é bloqueado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

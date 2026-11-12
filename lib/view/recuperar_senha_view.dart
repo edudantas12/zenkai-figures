@@ -1,12 +1,16 @@
-
 import 'package:flutter/material.dart';
 
+import '../controller/auth_controller.dart';
 import '../controller/recuperar_senha_controller.dart';
+import '../core/erro_app.dart';
 import '../main.dart';
 import 'common_widgets.dart';
 
 class RecoverPage extends StatefulWidget {
-  const RecoverPage({super.key});
+  /// E-mail já digitado na tela de login, para não precisar digitar de novo.
+  final String emailInicial;
+
+  const RecoverPage({super.key, this.emailInicial = ''});
 
   @override
   State<RecoverPage> createState() => _RecoverPageState();
@@ -14,13 +18,44 @@ class RecoverPage extends StatefulWidget {
 
 class _RecoverPageState extends State<RecoverPage> {
   final controller = RecuperarSenhaController();
-  final email = TextEditingController();
+  final auth = getIt<AuthController>();
+  late final email = TextEditingController(text: widget.emailInicial.trim());
+
+  bool carregando = false;
+  bool enviado = false;
 
   @override
   void dispose() {
     controller.dispose();
     email.dispose();
     super.dispose();
+  }
+
+  void _mensagem(String texto) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(texto)));
+  }
+
+  Future<void> _enviar() async {
+    if (carregando) return;
+
+    if (!controller.emailValido(email.text)) {
+      _mensagem('Informe um e-mail válido.');
+      return;
+    }
+
+    setState(() => carregando = true);
+    try {
+      await auth.enviarRedefinicaoSenha(email.text);
+      if (!mounted) return;
+      setState(() => enviado = true);
+      _mensagem('Link de recuperação enviado! Verifique seu e-mail.');
+    } on ErroApp catch (e) {
+      if (mounted) _mensagem(e.mensagem);
+    } finally {
+      if (mounted) setState(() => carregando = false);
+    }
   }
 
   @override
@@ -38,8 +73,8 @@ class _RecoverPageState extends State<RecoverPage> {
               color: panel,
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(
-              Icons.key_outlined,
+            child: Icon(
+              enviado ? Icons.mark_email_read_outlined : Icons.key_outlined,
               color: lime,
               size: 65,
             ),
@@ -54,8 +89,8 @@ class _RecoverPageState extends State<RecoverPage> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Informe o e-mail cadastrado. Em uma integração real, '
-            'enviaremos um link para redefinir sua senha.',
+            'Informe o e-mail cadastrado e enviaremos um link para '
+            'você criar uma nova senha.',
             style: TextStyle(color: muted),
           ),
           const SizedBox(height: 22),
@@ -64,33 +99,50 @@ class _RecoverPageState extends State<RecoverPage> {
           TextField(
             controller: email,
             keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            onSubmitted: (_) => _enviar(),
             decoration: const InputDecoration(
               hintText: 'voce@exemplo.com',
               prefixIcon: Icon(Icons.mail_outline),
             ),
           ),
           const SizedBox(height: 18),
-          PrimaryButton(
-            'Enviar link de recuperação',
-            onPressed: () {
-              if (!controller.emailValido(email.text)) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Informe um e-mail válido.'),
+          if (enviado) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF29351D),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: lime),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.check_circle_outline, color: lime),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Se houver uma conta com este e-mail, você vai '
+                      'receber o link em instantes. Confira também a '
+                      'caixa de spam.',
+                    ),
                   ),
-                );
-                return;
-              }
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Solicitação registrada para demonstração.',
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+          ],
+          carregando
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Center(
+                    child: CircularProgressIndicator(color: lime),
                   ),
+                )
+              : PrimaryButton(
+                  enviado ? 'Reenviar link' : 'Enviar link de recuperação',
+                  onPressed: _enviar,
                 ),
-              );
-            },
-          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text(
